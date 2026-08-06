@@ -1,0 +1,95 @@
+# Media stack. Two networks: caddy reaches jellyfin on media_net; the *arr
+# apps sit on media_internal, which caddy is not attached to.
+# Reach the *arr apps by VPN or LAN only (loopback binds). Do not proxy them
+# publicly.
+
+services:
+  jellyfin:
+    image: jellyfin/jellyfin:latest
+    container_name: jellyfin
+    restart: unless-stopped
+    # The official image ignores linuxserver-style PUID/PGID env vars; `user:`
+    # is how it runs non-root — nothing in this container runs as root, ever.
+    # Fresh named volumes are created root-owned, so chown them once before
+    # the first start (README step 4).
+    user: "1000:1000"
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - jellyfin_config:/config
+      - jellyfin_cache:/cache
+      # Bind-mount media through the HOST filesystem, not the network.
+      - /mnt/media:/media:ro
+    networks:
+      - media_net
+    security_opt:
+      - no-new-privileges:true
+    # For local-only access without the proxy, bind to loopback:
+    # ports:
+    #   - "127.0.0.1:8096:8096"
+
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    restart: unless-stopped
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TZ}
+    volumes:
+      - radarr_config:/config
+      - /mnt/media:/media
+    networks:
+      - media_internal
+    ports:
+      - "127.0.0.1:7878:7878"   # loopback only. Access by SSH tunnel or VPN.
+    security_opt:
+      - no-new-privileges:true
+
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    restart: unless-stopped
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TZ}
+    volumes:
+      - sonarr_config:/config
+      - /mnt/media:/media
+    networks:
+      - media_internal
+    ports:
+      - "127.0.0.1:8989:8989"
+    security_opt:
+      - no-new-privileges:true
+
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    restart: unless-stopped
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TZ}
+    volumes:
+      - prowlarr_config:/config
+    networks:
+      - media_internal
+    ports:
+      - "127.0.0.1:9696:9696"
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  media_net:
+    external: true
+  media_internal:
+    external: true
+
+volumes:
+  jellyfin_config:
+  jellyfin_cache:
+  radarr_config:
+  sonarr_config:
+  prowlarr_config:

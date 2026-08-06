@@ -1,0 +1,96 @@
+# Proxy stack: reverse proxy + threat detection.
+# Only the caddy container binds to 0.0.0.0 (ports 80/443).
+# All other stacks attach to internal networks. They publish no ports.
+# Dynamic DNS is off by default. To turn it on, see the ddns service below.
+
+services:
+  caddy:
+    build: ./caddy
+    container_name: caddy
+    restart: unless-stopped
+    ports:
+      # Explicit 0.0.0.0 = IPv4-only publishing. Without a host IP, Docker
+      # also binds "::" on IPv6-enabled hosts. This guide is IPv4-only by
+      # design (README step 2), so nothing ever answers on v6 — even if
+      # IPv6 is later re-enabled on the host.
+      - "0.0.0.0:80:80"
+      - "0.0.0.0:443:443"
+      - "0.0.0.0:443:443/udp"  # HTTP/3
+    environment:
+      - DOMAIN=${DOMAIN}
+      - CROWDSEC_API_KEY=${CROWDSEC_API_KEY}
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+      - caddy_logs:/var/log/caddy
+    networks:
+      - frontend
+      - media_net
+      - immich_net
+      - nextcloud_net
+    depends_on:
+      - crowdsec
+    security_opt:
+      - no-new-privileges:true
+
+  crowdsec:
+    image: crowdsecurity/crowdsec:latest
+    container_name: crowdsec
+    restart: unless-stopped
+    environment:
+      - COLLECTIONS=crowdsecurity/caddy crowdsecurity/http-cve crowdsecurity/base-http-scenarios
+      - BOUNCER_KEY_caddy=${CROWDSEC_API_KEY}
+    volumes:
+      - ./crowdsec/acquis.yaml:/etc/crowdsec/acquis.yaml:ro
+      - crowdsec_db:/var/lib/crowdsec/data
+      - crowdsec_config:/etc/crowdsec
+      - caddy_logs:/var/log/caddy:ro
+    networks:
+      - frontend
+    security_opt:
+      - no-new-privileges:true
+
+  # --- Dynamic DNS (OPTIONAL, off by default) ---
+  # Turn this on only if your public IP changes (a dynamic residential IP).
+  # A static IP does not need it. To turn it on:
+  #   1. Set CF_API_TOKEN in .env (Cloudflare token, scope: Zone.DNS Edit).
+  #   2. Remove the '#' from each line of the ddns service below.
+  #   3. Run: docker compose up -d
+  # NOTE: oznu/cloudflare-ddns (named in the post) is archived. Use favonia.
+  # ddns:
+  #   image: favonia/cloudflare-ddns:latest
+  #   container_name: ddns
+  #   restart: unless-stopped
+  #   user: "1000:1000"
+  #   read_only: true
+  #   cap_drop: [ALL]
+  #   security_opt:
+  #     - no-new-privileges:true
+  #   environment:
+  #     - CLOUDFLARE_API_TOKEN=${CF_API_TOKEN}
+  #     - DOMAINS=jellyfin.${DOMAIN},photos.${DOMAIN},cloud.${DOMAIN}   # the names you actually run
+  #     - PROXIED=false           # set true to enable orange-cloud
+  #   networks:
+  #     - frontend
+
+networks:
+  frontend:
+    name: frontend
+    external: true
+  media_net:
+    name: media_net
+    external: true
+  immich_net:
+    name: immich_net
+    external: true
+  nextcloud_net:
+    name: nextcloud_net
+    external: true
+
+volumes:
+  caddy_data:
+  caddy_config:
+  caddy_logs:
+  crowdsec_db:
+  crowdsec_config:

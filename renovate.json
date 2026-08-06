@@ -1,0 +1,24 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "docker:enableMajor"],
+  "docker-compose": {
+    "managerFilePatterns": ["/(^|/)docker-compose\\.ya?ml$/"]
+  },
+  "packageRules": [
+    {
+      "matchDatasources": ["docker"],
+      "matchUpdateTypes": ["patch", "minor"],
+      "automerge": true
+    },
+    {
+      "matchPackageNames": [
+        "nextcloud",
+        "ghcr.io/immich-app/immich-server",
+        "ghcr.io/immich-app/immich-machine-learning",
+        "ghcr.io/immich-app/postgres"
+      ],
+      "automerge": false
+    }
+  ],
+  "schedule": ["before 6am on saturday"]
+}

@@ -1,0 +1,78 @@
+# Immich. Two networks: caddy reaches immich-server on immich_net; the
+# database, cache, and ML containers sit on immich_internal, which caddy
+# is not attached to.
+# Based on the official immich compose. Confirm the current file at:
+# https://github.com/immich-app/immich/releases (compose changes between releases)
+
+services:
+  immich-server:
+    image: ghcr.io/immich-app/immich-server:release
+    container_name: immich-server
+    restart: unless-stopped
+    environment:
+      - DB_HOSTNAME=immich-db
+      - DB_USERNAME=immich
+      - DB_PASSWORD=${IMMICH_DB_PASSWORD}
+      - DB_DATABASE_NAME=immich
+      - REDIS_HOSTNAME=immich-redis
+    volumes:
+      - ${IMMICH_UPLOAD_DIR}:/data
+      - /etc/localtime:/etc/localtime:ro
+    networks:
+      - immich_net
+      - immich_internal
+    depends_on:
+      - immich-db
+      - immich-redis
+    security_opt:
+      - no-new-privileges:true
+
+  immich-machine-learning:
+    image: ghcr.io/immich-app/immich-machine-learning:release
+    container_name: immich-ml
+    restart: unless-stopped
+    volumes:
+      - immich_model_cache:/cache
+    networks:
+      - immich_internal
+    security_opt:
+      - no-new-privileges:true
+
+  immich-redis:
+    image: docker.io/valkey/valkey:8
+    container_name: immich-redis
+    restart: unless-stopped
+    networks:
+      - immich_internal
+    security_opt:
+      - no-new-privileges:true
+
+  immich-db:
+    # Immich's DB is a VectorChord/pgvector build, version-locked to the Immich
+    # release — there is NO plain ':16'. Bump this in lockstep when you upgrade
+    # Immich; copy the exact tag from Immich's official compose:
+    # https://github.com/immich-app/immich/releases
+    image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0
+    container_name: immich-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=immich
+      - POSTGRES_PASSWORD=${IMMICH_DB_PASSWORD}
+      - POSTGRES_DB=immich
+      - POSTGRES_INITDB_ARGS=--data-checksums
+    volumes:
+      - immich_db_data:/var/lib/postgresql/data
+    networks:
+      - immich_internal
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  immich_net:
+    external: true
+  immich_internal:
+    external: true
+
+volumes:
+  immich_model_cache:
+  immich_db_data:

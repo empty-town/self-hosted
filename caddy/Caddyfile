@@ -1,0 +1,65 @@
+{
+	# Global options
+	email admin@{$DOMAIN}
+
+	# The crowdsec handler has no default position in the chain — declare it or
+	# Caddy refuses to adapt the config. "first" = block banned IPs up front.
+	order crowdsec first
+
+	crowdsec {
+		api_url http://crowdsec:8080
+		api_key {$CROWDSEC_API_KEY}
+		ticker_interval 15s
+	}
+}
+
+# Reusable config blocks
+(secure) {
+	crowdsec
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 20mb
+			roll_keep 5
+		}
+		format json
+	}
+}
+
+# ---- Media ----
+jellyfin.{$DOMAIN} {
+	import secure
+	reverse_proxy jellyfin:8096
+}
+
+# The *arr apps (Radarr/Sonarr/Prowlarr) are NOT exposed here. They are
+# management tools. Reach them over your VPN or the LAN, not from the internet.
+
+# ---- Immich ----
+photos.{$DOMAIN} {
+	import secure
+	reverse_proxy immich-server:2283
+	request_body {
+		max_size 5GB
+	}
+}
+
+# ---- Nextcloud ----
+cloud.{$DOMAIN} {
+	import secure
+	reverse_proxy nextcloud:80
+	request_body {
+		max_size 10GB
+	}
+
+	redir /.well-known/carddav /remote.php/dav/ 301
+	redir /.well-known/caldav /remote.php/dav/ 301
+}
